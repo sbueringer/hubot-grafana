@@ -13,7 +13,7 @@ module.exports = function (grunt) {
           ],
           compilers: 'coffee:coffee-script/register'
         },
-        src: ['test/**/*.coffee']
+        src: ['test/disabled/**/*.coffee']
       }
     },
     release: {
