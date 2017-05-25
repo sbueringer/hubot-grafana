@@ -32,16 +32,17 @@
 #
 # Commands:
 #   hubot graf db <dashboard slug>[:<panel id>][ <template variables>][ <from clause>][ <to clause>] - Show grafana dashboard graphs
+#   hubot graf dbup <dashboard slug>[:<panel id>][ <template variables>][ <from clause>][ <to clause>] - Uploads grafana dashboard graphs to Mattermost
 #   hubot graf list <tag> - Lists all dashboards available (optional: <tag>)
 #   hubot graf search <keyword> - Search available dashboards by <keyword>
 #
 
-crypto  = require 'crypto'
-knox    = require 'knox'
+crypto = require 'crypto'
+knox = require 'knox'
 request = require 'request'
 
 module.exports = (robot) ->
-  # Various configuration options stored in environment variables
+# Various configuration options stored in environment variables
   grafana_host = process.env.HUBOT_GRAFANA_HOST
   grafana_api_key = process.env.HUBOT_GRAFANA_API_KEY
   grafana_query_time_range = process.env.HUBOT_GRAFANA_QUERY_TIME_RANGE or '6h'
@@ -54,10 +55,33 @@ module.exports = (robot) ->
   s3_region = process.env.HUBOT_GRAFANA_S3_REGION or 'us-standard'
   s3_port = process.env.HUBOT_GRAFANA_S3_PORT if process.env.HUBOT_GRAFANA_S3_PORT
 
+
+  mmHost = process.env.MATTERMOST_HOST
+  mmGroup = process.env.MATTERMOST_GROUP
+  mmUser = process.env.MATTERMOST_USER
+  mmPassword = process.env.MATTERMOST_PASSWORD
+  mmWSSPort = process.env.MATTERMOST_WSS_PORT or '443'
+  mmHTTPPort = process.env.MATTERMOST_HTTP_PORT or null
+
+  unless mmHost?
+    @robot.logger.emergency "MATTERMOST_HOST is required"
+    process.exit 1
+  unless mmUser?
+    @robot.logger.emergency "MATTERMOST_USER is required"
+    process.exit 1
+  unless mmPassword?
+    @robot.logger.emergency "MATTERMOST_PASSWORD is required"
+    process.exit 1
+  unless mmGroup?
+    @robot.logger.emergency "MATTERMOST_GROUP is required"
+    process.exit 1
+
   # Get a specific dashboard with options
-  robot.respond /(?:grafana|graph|graf) (?:dash|dashboard|db) ([A-Za-z0-9\-\:_]+)(.*)?/i, (msg) ->
-    slug = msg.match[1].trim()
-    remainder = msg.match[2]
+  robot.respond /(?:grafana|graph|graf) (dash|dashboard|db|dashup|dashboardup|dbup|) ([A-Za-z0-9\-\:_]+)(.*)?/i, (msg) ->
+    command = msg.match[1]
+    slug = msg.match[2].trim()
+    remainder = msg.match[3]
+    console.log "debug command:" + command + " slug:" + slug + " remainder:" + remainder
     timespan = {
       from: "now-#{grafana_query_time_range}"
       to: 'now'
@@ -83,16 +107,16 @@ module.exports = (robot) ->
 
     # Check if we have any extra fields
     if remainder
-      # The order we apply non-variables in
+# The order we apply non-variables in
       timeFields = ['from', 'to']
 
       for part in remainder.trim().split ' '
-        # Check if it's a variable or part of the timespan
+# Check if it's a variable or part of the timespan
         if part.indexOf('=') >= 0
           variables = "#{variables}&var-#{part}"
-          template_params.push { "name": part.split('=')[0], "value": part.split('=')[1] }
+          template_params.push {"name": part.split('=')[0], "value": part.split('=')[1]}
 
-        # Only add to the timespan if we haven't already filled out from and to
+# Only add to the timespan if we haven't already filled out from and to
         else if timeFields.length > 0
           timespan[timeFields.shift()] = part.trim()
 
@@ -117,12 +141,12 @@ module.exports = (robot) ->
 
       # Handle refactor done for version 2.0.2+
       if dashboard.dashboard
-        # 2.0.2+: Changed in https://github.com/grafana/grafana/commit/e5c11691203fe68958e66693e429f6f5a3c77200
+# 2.0.2+: Changed in https://github.com/grafana/grafana/commit/e5c11691203fe68958e66693e429f6f5a3c77200
         data = dashboard.dashboard
         # The URL was changed in https://github.com/grafana/grafana/commit/35cc0a1cc0bca453ce789056f6fbd2fcb13f74cb
         apiEndpoint = 'dashboard-solo'
       else
-        # 2.0.2 and older
+# 2.0.2 and older
         data = dashboard.model
         apiEndpoint = 'dashboard/solo'
 
@@ -164,11 +188,14 @@ module.exports = (robot) ->
           imageUrl = "#{grafana_host}/render/#{apiEndpoint}/db/#{slug}/?panelId=#{panel.id}&width=1000&height=500&from=#{timespan.from}&to=#{timespan.to}#{variables}"
           link = "#{grafana_host}/dashboard/db/#{slug}/?panelId=#{panel.id}&fullscreen&from=#{timespan.from}&to=#{timespan.to}#{variables}"
 
-          # Fork here for S3-based upload and non-S3
+          # Fork here for S3-based or Mattermost-based upload response only
           if (s3_bucket && s3_access_key && s3_secret_key)
             fetchAndUpload msg, title, imageUrl, link
           else
-            sendRobotResponse msg, title, imageUrl, link
+            if command in ['dashup','dashboardup','dbup']
+              fetchAndUploadToMattermost msg, title, imageUrl, link
+            else
+              sendRobotResponse msg, title, imageUrl, link
 
   # Get a list of available dashboards
   robot.respond /(?:grafana|graph|graf) list\s?(.+)?/i, (msg) ->
@@ -195,7 +222,7 @@ module.exports = (robot) ->
 
   # Send Dashboard list
   sendDashboardList = (dashboards, response, msg) ->
-    # Handle refactor done for version 2.0.2+
+# Handle refactor done for version 2.0.2+
     if dashboards.dashboards
       list = dashboards.dashboards
     else
@@ -206,7 +233,7 @@ module.exports = (robot) ->
       return
 
     for dashboard in list
-      # Handle refactor done for version 2.0.2+
+# Handle refactor done for version 2.0.2+
       if dashboard.uri
         slug = dashboard.uri.replace /^db\//, ''
       else
@@ -234,7 +261,7 @@ module.exports = (robot) ->
   # Send robot response
   sendRobotResponse = (msg, title, image, link) ->
     switch robot.adapterName
-      # Slack
+# Slack
       when 'slack'
         msg.send {
           attachments: [
@@ -247,12 +274,12 @@ module.exports = (robot) ->
           ],
           unfurl_links: false
         }
-      # Hipchat
+# Hipchat
       when 'hipchat'
         msg.send "#{title}: #{link} - #{image}"
-      # Everything else
+# Everything else
       else
-        msg.send "#{title}: #{image} - #{link}"
+        msg.send "#{title}: ![Image](#{image}) - #{link}"
 
   # Call off to Grafana
   callGrafana = (url, callback) ->
@@ -277,16 +304,67 @@ module.exports = (robot) ->
     prefix = s3_prefix || 'grafana'
     "#{prefix}/#{crypto.randomBytes(20).toString('hex')}.png"
 
+  # Fetch an image from provided URL, upload it to Mattermost,
+  fetchAndUploadToMattermost = (msg, title, url, link) ->
+    if grafana_api_key
+      requestHeaders =
+        encoding: null,
+        auth:
+          bearer: grafana_api_key
+    else
+      requestHeaders =
+        encoding: null
+
+    request url, requestHeaders, (err, res, body) ->
+      robot.logger.debug "Uploading file: with length: #{body.length} bytes, content-type[#{res.headers['content-type']}]"
+      uploadToMattermost(msg, title, link, body, body.length, res.headers['content-type'])
+
+  # Upload image to Mattermost
+  uploadToMattermost = (msg, title, link, content, length, content_type) ->
+    robot.adapter.client.uploadFile msg.message.room, content, (res, data, header) =>
+      console.log "data: " + JSON.stringify(data)
+      console.log "header: " + JSON.stringify(header)
+
+      if (200 == res.statusCode)
+        file_ids = (file_info.id for file_info in data.file_infos)
+        sendMessageWithFile msg.message.room, file_ids, title
+      else
+        robot.logger.debug res
+        robot.logger.error "Upload Error Code: #{res.statusCode}"
+        msg.send "#{title} - [Upload Error] - #{link}"
+
+  sendMessageWithFile = (room, file_ids, strings...) ->
+    # Check if the target room is also a user's username
+    user = robot.brain.userForName(room)
+
+    console.log "file_ids: " + file_ids
+    # If it's not, continue as normal
+    unless user
+      channel = robot.adapter.client.findChannelByName(room)
+      robot.adapter.client.postMessage(str, channel?.id or room, file_ids) for str in strings
+      return
+
+    # If it is, we assume they want to DM that user
+    # Message their DM channel ID if it already exists.
+    if user.mm?.dm_channel_id?
+      robot.adapter.client.postMessage(str, user.mm.dm_channel_id, file_ids) for str in strings
+      return
+
+    # Otherwise, create a new DM channel ID and message it.
+    robot.adapter.client.getUserDirectMessageChannel user.id, (channel) =>
+      user.mm.dm_channel_id = channel.id
+      robot.adapter.client.postMessage(str, channel.id, file_ids) for str in strings
+
   # Fetch an image from provided URL, upload it to S3, returning the resulting URL
   fetchAndUpload = (msg, title, url, link) ->
     if grafana_api_key
-        requestHeaders =
-          encoding: null,
-          auth:
-            bearer: grafana_api_key
-      else
-        requestHeaders =
-          encoding: null
+      requestHeaders =
+        encoding: null,
+        auth:
+          bearer: grafana_api_key
+    else
+      requestHeaders =
+        encoding: null
 
     request url, requestHeaders, (err, res, body) ->
       robot.logger.debug "Uploading file: #{body.length} bytes, content-type[#{res.headers['content-type']}]"
@@ -295,21 +373,21 @@ module.exports = (robot) ->
   # Upload image to S3
   uploadToS3 = (msg, title, link, content, length, content_type) ->
     client = knox.createClient {
-        key      : s3_access_key
-        secret   : s3_secret_key,
-        bucket   : s3_bucket,
-        region   : s3_region,
-        endpoint : s3_endpoint,
-        port     : s3_port,
-        style    : s3_style,
-      }
+      key: s3_access_key
+      secret: s3_secret_key,
+      bucket: s3_bucket,
+      region: s3_region,
+      endpoint: s3_endpoint,
+      port: s3_port,
+      style: s3_style,
+    }
 
 
     headers = {
-      'Content-Length' : length,
-      'Content-Type'   : content_type,
-      'x-amz-acl'      : 'public-read',
-      'encoding'       : null
+      'Content-Length': length,
+      'Content-Type': content_type,
+      'x-amz-acl': 'public-read',
+      'encoding': null
     }
 
     filename = uploadPath()
@@ -322,7 +400,6 @@ module.exports = (robot) ->
     req = client.put(filename, headers)
 
     req.on 'response', (res) ->
-
       if (200 == res.statusCode)
         sendRobotResponse msg, title, image_url, link
       else
