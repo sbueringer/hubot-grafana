@@ -1,5 +1,5 @@
 {
-  "name": "sbueringer-hubot-grafana",
+  "name": "hubot-sbueringer-grafana",
   "description": "Query Grafana dashboards",
   "version": "1.7.0",
   "author": "Stefan Bueringer <npm.sbueringer@gmail.com>",

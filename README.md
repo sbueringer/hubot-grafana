@@ -12,13 +12,13 @@ Use Hubot to query Grafana dashboards. Inspired by the work of [`hubot-graphite`
 
 In the Hubot project repo, run:
 
-`npm install sbueringer-hubot-grafana --save`
+`npm install hubot-sbueringer-grafana --save`
 
-Then add **sbueringer-hubot-grafana** to your `external-scripts.json`:
+Then add **hubot-sbueringer-grafana** to your `external-scripts.json`:
 
 ```json
 [
-  "sbueringer-hubot-grafana"
+  "hubot-sbueringer-grafana"
 ]
 ```
 
@@ -38,7 +38,7 @@ Then add **sbueringer-hubot-grafana** to your `external-scripts.json`:
 
 Recommended if you use a service such as Slack or HipChat. You can omit all of these settings if you do not plan to use S3.
 
-Graphs are downloaded to the box running **sbueringer-hubot-grafana** and then uploaded to S3 with world-readable rights, so you do not have to do anything special to your S3 bucket in order to serve the graph images suitable for Slack or HipChat.  E.g., you do not have to set up web hosting for your S3 bucket.
+Graphs are downloaded to the box running **hubot-sbueringer-grafana** and then uploaded to S3 with world-readable rights, so you do not have to do anything special to your S3 bucket in order to serve the graph images suitable for Slack or HipChat.  E.g., you do not have to set up web hosting for your S3 bucket.
 
 | Configuration Variable               | Required | Description                |
 | ------------------------------------ | -------- | -------------------------- |
@@ -53,9 +53,9 @@ Graphs are downloaded to the box running **sbueringer-hubot-grafana** and then u
 
 You most likely want to add an S3 Life Cycle Configuration that will "Permanently Delete" the graphs after 1 hour or 1 day, as appropriate for your organization.
 
-#### Hosting **sbueringer-hubot-grafana** _within_ AWS.
+#### Hosting **hubot-sbueringer-grafana** _within_ AWS.
 
-EC2 IAM Roles will _not_ be used.  In order for your **sbueringer-hubot-grafana** to be allowed to store graphs in S3 that can be referenced via Slack or HipChat, the IAM user with the credentials you run **sbueringer-hubot-grafana** as should have an IAM user policy such as:
+EC2 IAM Roles will _not_ be used.  In order for your **hubot-sbueringer-grafana** to be allowed to store graphs in S3 that can be referenced via Slack or HipChat, the IAM user with the credentials you run **hubot-sbueringer-grafana** as should have an IAM user policy such as:
 
 ```
 {
