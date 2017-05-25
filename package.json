@@ -1,7 +1,7 @@
 {
   "name": "sbueringer-hubot-grafana",
   "description": "Query Grafana dashboards",
-  "version": "1.6.0",
+  "version": "1.7.0",
   "author": "Stefan Bueringer <npm.sbueringer@gmail.com>",
   "license": "MIT",
   "keywords": "hubot, hubot-scripts, grafana, graphs",
